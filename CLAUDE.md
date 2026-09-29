@@ -27,4 +27,4 @@ docs/superpowers/specs/2026-09-29-kubeid-design.md.
 
 ## Backlog
 
-Other tool ideas (gwtrace, pgtriage, env2netbox) live in IDEAS.md.
+Deferred kubeid work lives in ISSUES.md.

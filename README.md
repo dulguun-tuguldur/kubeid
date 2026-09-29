@@ -240,4 +240,4 @@ uv run pytest                                # everything, including e2e (needs 
   writable config, user-owned issuer kubeconfig, bare root, non-admin `--for`,
   group escalation).
 
-Design: `docs/superpowers/specs/2026-09-29-kubeid-design.md`. Other tool ideas: `IDEAS.md`.
+Design: `docs/superpowers/specs/2026-09-29-kubeid-design.md`. Deferred work: `ISSUES.md`.
