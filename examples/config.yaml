@@ -1,0 +1,24 @@
+# Example /etc/kubeid/config.yaml (root:root 0644, directory root:root 0755).
+# Commit the real one to Git next to the rendered RBAC so mapping and bindings change together.
+cluster:
+  name: prod
+  server: https://10.10.0.10:6443      # kube-vip VIP (or its DNS name, must be in the API server cert SANs)
+  ca_file: /etc/kubeid/prod-ca.crt     # API server CA, embedded in every issued kubeconfig
+issuer:
+  kubeconfig: /etc/kubeid/issuer.kubeconfig   # root:root 0600, ServiceAccount token from `kubeid rbac`
+policy:
+  default_ttl: 12h
+  max_ttl: 24h
+  admin_groups: [k8s-platform-admin]   # FreeIPA groups allowed to use `kubeid issue --for USER`
+groups:                                # FreeIPA group -> Kubernetes RBAC group
+  k8s-platform-admin: platform-admin
+  k8s-senior-dev: cluster-viewer
+  k8s-loans-dev: loans-edit
+rbac:
+  - group: platform-admin
+    clusterrole: cluster-admin
+  - group: cluster-viewer
+    clusterrole: view                  # built-in; excludes Secrets
+  - group: loans-edit
+    clusterrole: edit
+    namespaces: [loans-dev, loans-stg]

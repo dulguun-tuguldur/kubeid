@@ -1,0 +1,29 @@
+[project]
+name = "kubeid"
+version = "0.1.0"
+description = "Issue short-lived per-engineer Kubernetes kubeconfigs mapped from FreeIPA groups"
+authors = [
+    { name = "Dulguun", email = "dulguun.tuguldur11@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "cryptography>=50.0.1",
+    "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+kubeid = "kubeid.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.21,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["error"]
