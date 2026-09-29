@@ -59,7 +59,9 @@ def test_as_user_runs_writer_subprocess_with_dropped_privileges():
     write_private_file("/home/alice/.kube/kubeid/prod.yaml", b"kubeconfig", alice,
                        run=fake_run, grouplist=lambda name, gid: [1001, 2000])
     (args, kwargs) = calls[0]
-    assert args == [sys.executable, "-m", "kubeid.output", "/home/alice/.kube/kubeid/prod.yaml"]
+    # -I: no cwd on sys.path, no PYTHON* env, no user site-packages; cwd "/" for the same reason
+    assert args == [sys.executable, "-I", "-m", "kubeid.output", "/home/alice/.kube/kubeid/prod.yaml"]
+    assert kwargs["cwd"] == "/"
     assert kwargs["input"] == b"kubeconfig"
     assert kwargs["user"] == 1001
     assert kwargs["group"] == 1001

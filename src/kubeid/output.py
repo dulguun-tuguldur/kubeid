@@ -19,10 +19,12 @@ def write_private_file(path, data, as_user, run=subprocess.run, grouplist=os.get
     if as_user is None:
         _write_atomic(path, data)
         return
+    # -I and cwd="/" keep files in the invoker's working directory off the child's import path.
     proc = run(
-        [sys.executable, "-m", "kubeid.output", path],
+        [sys.executable, "-I", "-m", "kubeid.output", path],
         input=data,
         capture_output=True,
+        cwd="/",
         user=as_user.uid,
         group=as_user.gid,
         extra_groups=grouplist(as_user.name, as_user.gid),

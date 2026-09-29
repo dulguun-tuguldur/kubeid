@@ -15,8 +15,8 @@ class FakeRun:
         self.responses = list(responses)
         self.calls = []
 
-    def __call__(self, args, input=None, capture_output=None, text=None, timeout=None):
-        self.calls.append({"args": args, "input": input})
+    def __call__(self, args, input=None, capture_output=None, text=None, timeout=None, env=None):
+        self.calls.append({"args": args, "input": input, "env": env})
         response = self.responses.pop(0)
         if isinstance(response, Exception):
             raise response
@@ -121,3 +121,21 @@ def test_wait_for_certificate_times_out():
     run = FakeRun(*[(0, csr_json(), "")] * 10)
     with pytest.raises(KubeError, match="not issued within 2s"):
         kubectl(run, clock).wait_for_certificate("kubeid-alice-x", timeout=2, interval=0.5)
+
+
+def test_env_is_passed_to_kubectl():
+    run = FakeRun((0, "approved", ""))
+    Kubectl("/etc/kubeid/issuer.kubeconfig", run=run, env={"PATH": "/usr/bin"}).approve_csr("x")
+    assert run.calls[0]["env"] == {"PATH": "/usr/bin"}
+
+
+def test_invalid_json_from_kubectl_raises_kube_error():
+    run = FakeRun((0, "this is not json", ""))
+    with pytest.raises(KubeError, match="invalid JSON"):
+        kubectl(run).wait_for_certificate("kubeid-alice-x")
+
+
+def test_invalid_base64_certificate_raises_kube_error():
+    run = FakeRun((0, json.dumps({"status": {"certificate": "***not base64***"}}), ""))
+    with pytest.raises(KubeError, match="not valid base64"):
+        kubectl(run).wait_for_certificate("kubeid-alice-x")

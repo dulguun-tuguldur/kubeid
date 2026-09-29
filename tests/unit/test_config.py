@@ -5,7 +5,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from kubeid.config import ConfigError, RbacRule, check_trusted_file, load_config, parse_config
+from kubeid.config import (
+    ConfigError,
+    RbacRule,
+    check_private_file,
+    check_trusted_file,
+    load_config,
+    parse_config,
+)
 
 VALID = {
     "cluster": {
@@ -165,3 +172,12 @@ def test_check_trusted_file_rejects_non_root_owner():
 def test_check_trusted_file_rejects_group_or_world_writable():
     with pytest.raises(ConfigError, match="group/world-writable"):
         check_trusted_file("/etc/kubeid/config.yaml", SimpleNamespace(st_uid=0, st_mode=0o100664))
+
+
+def test_check_private_file_accepts_0600():
+    check_private_file("/etc/kubeid/issuer.kubeconfig", SimpleNamespace(st_uid=0, st_mode=0o100600))
+
+
+def test_check_private_file_rejects_group_or_world_readable():
+    with pytest.raises(ConfigError, match="must not be readable by group/others"):
+        check_private_file("/etc/kubeid/issuer.kubeconfig", SimpleNamespace(st_uid=0, st_mode=0o100640))

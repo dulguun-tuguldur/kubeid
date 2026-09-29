@@ -46,6 +46,7 @@ class Kubectl:
         sleep=time.sleep,
         monotonic=time.monotonic,
         timeout=60,
+        env=None,
     ):
         self.kubeconfig = kubeconfig
         self.run = run
@@ -53,11 +54,12 @@ class Kubectl:
         self.sleep = sleep
         self.monotonic = monotonic
         self.timeout = timeout
+        self.env = env  # None inherits the environment
 
     def _run(self, *args, stdin=None):
         cmd = [self.kubectl, "--kubeconfig", self.kubeconfig, *args]
         try:
-            proc = self.run(cmd, input=stdin, capture_output=True, text=True, timeout=self.timeout)
+            proc = self.run(cmd, input=stdin, capture_output=True, text=True, timeout=self.timeout, env=self.env)
         except FileNotFoundError:
             raise KubeError(f"kubectl not found (looked for {self.kubectl!r} on PATH)") from None
         except subprocess.TimeoutExpired:
@@ -74,7 +76,11 @@ class Kubectl:
         self._run("certificate", "approve", name)
 
     def get_csr(self, name):
-        return json.loads(self._run("get", "csr", name, "-o", "json"))
+        output = self._run("get", "csr", name, "-o", "json")
+        try:
+            return json.loads(output)
+        except ValueError:
+            raise KubeError(f"kubectl get csr {name} returned invalid JSON") from None
 
     def wait_for_certificate(self, name, timeout=30.0, interval=0.5):
         start = self.monotonic()
@@ -88,7 +94,10 @@ class Kubectl:
                     )
             certificate = status.get("certificate")
             if certificate:
-                return base64.b64decode(certificate)
+                try:
+                    return base64.b64decode(certificate, validate=True)
+                except ValueError:
+                    raise KubeError(f"CSR {name} status.certificate is not valid base64") from None
             if self.monotonic() - start >= timeout:
                 raise KubeError(
                     f"CSR {name} not issued within {timeout:g}s; is kube-controller-manager "

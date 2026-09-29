@@ -148,3 +148,12 @@ def check_trusted_file(path, st):
         raise ConfigError(f"{path} must be owned by root when kubeid runs as root")
     if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
         raise ConfigError(f"{path} is group/world-writable; fix with: chmod go-w {path}")
+
+
+def check_private_file(path, st):
+    """A file holding a credential must be accessible by its owner only."""
+    if st.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
+        raise ConfigError(
+            f"{path} must not be readable by group/others (it holds the issuer token); "
+            f"fix with: chmod 600 {path}"
+        )

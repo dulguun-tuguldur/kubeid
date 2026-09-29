@@ -2,13 +2,16 @@
 # ABOUTME: Wires real dependencies (NSS, kubectl, syslog, filesystem) into the core modules.
 import argparse
 import os
+import pwd
 import secrets
+import shlex
+import shutil
 import sys
 import syslog
 from datetime import datetime, timezone
 
 from kubeid.certs import CertError
-from kubeid.config import ConfigError, check_trusted_file, load_config
+from kubeid.config import ConfigError, check_private_file, check_trusted_file, load_config
 from kubeid.identity import IdentityError, SystemNSS, resolve_invoker
 from kubeid.issue import IssueOptions, issue
 from kubeid.kube import KubeError, Kubectl
@@ -17,7 +20,13 @@ from kubeid.rbac import render_yaml
 from kubeid.ttl import TTLError, format_duration
 
 DEFAULT_CONFIG = "/etc/kubeid/config.yaml"
+# As root, binaries are only looked up here, whatever PATH the caller (or sudo) handed us.
+SAFE_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 ERRORS = (CertError, ConfigError, IdentityError, KubeError, OutputError, TTLError, OSError)
+
+# Filesystem seams so tests can simulate root-owned files without patching os globally.
+_stat = os.stat
+_realpath = os.path.realpath
 
 
 def build_parser():
@@ -41,9 +50,15 @@ def build_parser():
 
 
 def _check_trusted(path):
-    check_trusted_file(path, os.stat(path))
-    parent = os.path.dirname(os.path.realpath(path))
-    check_trusted_file(parent, os.stat(parent))
+    """The file and every directory above it must be controlled by root alone."""
+    check_trusted_file(path, _stat(path))
+    directory = os.path.dirname(_realpath(path))
+    while True:
+        check_trusted_file(directory, _stat(directory))
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            return
+        directory = parent
 
 
 def _load_config(args, euid):
@@ -56,8 +71,20 @@ def _load_config(args, euid):
     _check_trusted(DEFAULT_CONFIG)
     config = load_config(DEFAULT_CONFIG)
     _check_trusted(config.issuer_kubeconfig)
+    check_private_file(config.issuer_kubeconfig, _stat(config.issuer_kubeconfig))
     _check_trusted(config.ca_file)
     return config
+
+
+def _kubectl_for(euid):
+    """kubectl binary and environment to run it with. As root, neither may come from the caller."""
+    if euid != 0:
+        return "kubectl", None
+    binary = shutil.which("kubectl", path=SAFE_PATH)
+    if binary is None:
+        raise ConfigError(f"kubectl not found in {SAFE_PATH}")
+    _check_trusted(binary)
+    return binary, {"PATH": SAFE_PATH, "HOME": pwd.getpwuid(0).pw_dir}
 
 
 def _read_bytes(path):
@@ -65,9 +92,14 @@ def _read_bytes(path):
         return fh.read()
 
 
+def _printable(text):
+    # Arguments are caller-controlled; escape newlines etc. so nobody can forge extra log lines.
+    return "".join(ch if ch.isprintable() else f"\\x{ord(ch):02x}" for ch in text)
+
+
 def _audit(message):
     syslog.openlog("kubeid", syslog.LOG_PID, syslog.LOG_AUTH)
-    syslog.syslog(syslog.LOG_INFO, message)
+    syslog.syslog(syslog.LOG_INFO, _printable(message))
     syslog.closelog()
 
 
@@ -81,13 +113,14 @@ def _issue(args, config, euid):
     nss = SystemNSS()
     invoker = resolve_invoker(euid, os.environ, nss)
     writer_user = invoker.user if euid == 0 else None
+    kubectl_binary, kubectl_env = _kubectl_for(euid)
     now = datetime.now(timezone.utc)
     result = issue(
         IssueOptions(for_user=args.for_user, groups=_parse_groups(args.groups), ttl=args.ttl, out=args.out),
         config,
         invoker,
         nss,
-        Kubectl(config.issuer_kubeconfig),
+        Kubectl(config.issuer_kubeconfig, kubectl=kubectl_binary, env=kubectl_env),
         now=now,
         suffix=secrets.token_hex(2),
         read_file=_read_bytes,
@@ -111,6 +144,7 @@ def _issue(args, config, euid):
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
     args = build_parser().parse_args(argv)
     euid = os.geteuid()
     try:
@@ -121,4 +155,7 @@ def main(argv=None):
         return _issue(args, config, euid)
     except ERRORS as err:
         print(f"kubeid: error: {err}", file=sys.stderr)
+        # Refusals are audit events too: a blocked escalation attempt should show up in Graylog.
+        caller = os.environ.get("SUDO_UID", "unknown") if euid == 0 else str(euid)
+        _audit(f"refused uid={caller} args={shlex.join(argv)} error={err}")
         return 1

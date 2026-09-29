@@ -119,6 +119,21 @@ ipa sudorule-add-user kubeid --groups=k8s-platform-admin --groups=k8s-senior-dev
 Do not grant `SETENV` on this rule. kubeid trusts `SUDO_UID`, which sudo sets itself.
 Allow only the installed entry point, never `python -m kubeid` (that imports from cwd).
 
+Sudo defaults the jump host must keep. `env_reset` is non-negotiable: without it,
+Python honours a caller's `PYTHONPATH` before any kubeid code runs.
+
+```bash
+# jump host: expect "env_reset" and "secure_path"; expect NO "!env_reset", "setenv", or env_keep of PYTHON*
+sudo grep -rhE 'env_reset|secure_path|setenv|SETENV|env_keep' /etc/sudoers /etc/sudoers.d/
+ipa sudorule-show kubeid --all | grep -i option     # FreeIPA side: no setenv / !env_reset options
+```
+
+kubeid does not rely on `secure_path` for kubectl. As root it only looks up
+`kubectl` in `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin`.
+It refuses a `kubectl` whose file or any parent directory is not root-owned, or is
+group/world-writable. It runs kubectl with an environment of just `PATH` + `HOME=/root`.
+(The e2e suite deletes `secure_path` and plants `~/bin/kubectl` to prove this.)
+
 ### Verify
 
 ```bash
@@ -127,7 +142,8 @@ sudo kubeid issue
 export KUBECONFIG=~/.kube/kubeid/prod.yaml
 kubectl auth whoami                  # your username + mapped groups
 kubectl auth can-i --list | head     # matches the group's role
-journalctl -t kubeid --since today   # issuance audit line (syslog LOG_AUTH)
+journalctl -t kubeid --since today   # "issued user=..." and "refused uid=... args=... error=..." lines
+sudo kubeid issue --groups platform-admin; journalctl -t kubeid -n 1   # a refusal is logged too
 ```
 
 API server audit log should show `user.username=<you>` for your requests (see Audit below).
@@ -186,7 +202,12 @@ Ship `audit.log` to Graylog; filter on `user.username` and `user.groups`.
 - **Issuer kubeconfig = CA-grade secret.** Its token can create and approve
   client-cert CSRs for any name and group, including admin groups. kubeid refuses
   `system:*` and anything outside the allowlist, but raw kubectl with that file would
-  not. Keep it root-only on the jump host. Revoke by deleting its Secret.
+  not. Keep it root-only on the jump host. kubeid refuses to run if it is readable by
+  group/others. Revoke it by deleting its Secret.
+- Every refusal is logged to syslog as well as every issuance, with control
+  characters escaped, so a blocked escalation attempt (`--groups platform-admin`,
+  `--for` by a non-admin, `--config` under sudo) shows up in Graylog with the
+  caller's `SUDO_UID` and exact arguments.
 - **Client certs cannot be revoked by Kubernetes.** Short TTL is the control. Removing
   someone from a FreeIPA group takes effect at their next renewal (≤ TTL).
   Immediate levers: delete the relevant group binding (affects the whole group),

@@ -64,7 +64,18 @@ runs `kubeid issue` directly. Identity = current uid. Same rules otherwise.
    (Kubernetes minimum `expirationSeconds` is 600). Out of range = error, not clamp.
 6. Issued certificate is verified before writing: CN, set of O, and public key
    must match what was requested.
-7. Every issuance is logged to syslog (`LOG_AUTH`) for Graylog.
+7. Every issuance and every refusal is logged to syslog (`LOG_AUTH`) for Graylog,
+   with non-printable characters escaped (arguments are caller-controlled).
+8. As root, `kubectl` is resolved only within a fixed safe PATH, must be root-owned
+   and not group/world-writable (file and all ancestor directories), and runs with
+   an environment of only `PATH` and `HOME=<root home>`. Does not depend on sudo's
+   `secure_path`. Trust checks walk all ancestor directories, not just the parent.
+9. As root, the issuer kubeconfig must not be accessible by group/others (0600).
+10. The privilege-dropped writer runs `python -I` with cwd `/`, so nothing in the
+    invoker's working directory lands on its import path.
+
+Added after the 2026-09-29 security review. Rule 8 has an e2e test that deletes
+`secure_path`, plants `~/bin/kubectl`, and asserts it never runs.
 
 Known limits (accepted):
 - Kubernetes cannot revoke client certificates. Short TTL (default 12h, max 24h)

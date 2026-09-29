@@ -119,3 +119,25 @@ def test_refusals_under_root(image, script, expected):
     assert proc.returncode == 1, proc.stdout + proc.stderr
     assert expected in proc.stderr
     assert proc.stdout == ""
+
+
+# Without secure_path, sudo keeps the caller's PATH. kubeid must still only run the root-owned kubectl.
+HIJACK = """
+sed -i '/secure_path/d' /etc/sudoers
+mkdir -p /home/alice/bin
+cat > /home/alice/bin/kubectl <<'SCRIPT'
+#!/bin/sh
+id -u > /tmp/hijack-ran-as
+exec /usr/local/bin/kubectl "$@"
+SCRIPT
+chmod 0755 /home/alice/bin/kubectl && chown -R alice:alice /home/alice/bin
+su - alice -c 'PATH=/home/alice/bin:$PATH sudo kubeid issue'
+echo "hijack-ran-as=$(cat /tmp/hijack-ran-as 2>/dev/null || echo never)"
+"""
+
+
+@pytest.mark.e2e
+def test_caller_path_cannot_substitute_kubectl_even_without_secure_path(image):
+    proc = run(image, HIJACK)
+    assert "✓ kubeconfig" in proc.stdout, proc.stdout + proc.stderr
+    assert "hijack-ran-as=never" in proc.stdout, proc.stdout + proc.stderr
