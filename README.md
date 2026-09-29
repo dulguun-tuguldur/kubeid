@@ -60,6 +60,9 @@ is shorter than `max_ttl`, certs silently get the shorter lifetime.
 
 ### Change 1 — RBAC (additive)
 
+`kubeid rbac` does not create the target namespaces of namespaced rules
+(`loans-dev`, ...). They must already exist, or `kubectl apply` fails on those RoleBindings.
+
 ```bash
 # workstation, in the infra Git repo
 kubeid rbac --config ./kubeid/config.yaml > ./kubeid/rbac.yaml
