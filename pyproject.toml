@@ -27,3 +27,4 @@ dev = [
 testpaths = ["tests"]
 addopts = "-q"
 filterwarnings = ["error"]
+markers = ["e2e: end-to-end tests that need Docker"]

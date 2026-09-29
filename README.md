@@ -210,5 +210,10 @@ uv run pytest                                # everything, including e2e (needs 
   signs CSRs with a throwaway CA.
 - `tests/e2e` — real K3s in Docker: apply `kubeid rbac`, issue, `kubectl auth whoami`,
   `kubectl auth can-i`.
+- `tests/e2e_sudo` — Debian container with real `sudo` and FreeIPA-like users/groups
+  (stub kubectl): identity from `SUDO_UID`, output owned by the invoker, symlink at the
+  output path cannot touch `/etc/shadow`, and every root-only refusal (`--config`,
+  writable config, user-owned issuer kubeconfig, bare root, non-admin `--for`,
+  group escalation).
 
 Design: `docs/superpowers/specs/2026-09-29-kubeid-design.md`. Other tool ideas: `IDEAS.md`.
