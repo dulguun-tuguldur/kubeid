@@ -2,6 +2,8 @@
 name = "kubeid"
 version = "0.1.0"
 description = "Issue short-lived per-engineer Kubernetes kubeconfigs mapped from FreeIPA groups"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "Dulguun", email = "dulguun.tuguldur11@gmail.com" }
 ]

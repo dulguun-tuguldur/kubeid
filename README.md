@@ -241,3 +241,7 @@ uv run pytest                                # everything, including e2e (needs 
   group escalation).
 
 Design: `docs/superpowers/specs/2026-09-29-kubeid-design.md`. Deferred work: `ISSUES.md`.
+
+## License
+
+MIT, see `LICENSE`.
